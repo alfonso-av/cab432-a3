@@ -3,7 +3,8 @@ import requests
 import os
 from streamlit_autorefresh import st_autorefresh
 
-BASE_URL = "http://n10893997.cab432.com:3000"
+# BASE_URL = "http://n10893997.cab432.com:3000"
+BASE_URL = "https://n10893997.cab432.com"
 st.title("CAB432 A2 Frontend - Video File Transcoder")
 
 # ---------------- SESSION STATE ----------------

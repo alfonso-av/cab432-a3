@@ -9,9 +9,11 @@ router = APIRouter(tags=["jobs"])
 REGION = "ap-southeast-2"
 JOBS_TABLE = "n10893997-a2-jobs3"
 S3_BUCKET = "n10893997-videos"
+SQS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/901444280953/n10893997-sqs-a3"
 
 dynamodb = boto3.client("dynamodb", region_name=REGION)
 s3_client = boto3.client("s3", region_name=REGION)
+sqs = boto3.client("sqs", region_name=REGION)
 
 
 # ---------------- JOB RUNNER ----------------
@@ -42,13 +44,17 @@ async def run_job(jobs_id: str, username: str, s3_key: str):
         os.makedirs(os.path.dirname(input_path), exist_ok=True)
         s3_client.download_file(S3_BUCKET, s3_key, input_path)
 
-        # Run ffmpeg asynchronously
+        # Run ffmpeg asynchronously (use all CPU threads to trigger autoscaling faster)
         process = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y", "-i", input_path,
-            "-c:v", "libx264", "-preset", "ultrafast", output_path,
+            "-c:v", "libx264",
+            "-preset", "medium",   # "medium" or "slow" = higher CPU usage
+            "-threads", "0",       # use all available cores
+            output_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
+
 
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=300)
