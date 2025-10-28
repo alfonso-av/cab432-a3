@@ -12,7 +12,7 @@ S3_BUCKET = "n10893997-videos"
 SQS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/901444280953/n10893997-sqs-a3"
 
 dynamodb = boto3.client("dynamodb", region_name=REGION)
-s3_client = boto3.client("s3", region_name=REGION)
+# s3_client = boto3.client("s3", region_name=REGION)
 sqs = boto3.client("sqs", region_name=REGION)
 
 
@@ -108,7 +108,7 @@ async def run_job(jobs_id: str, username: str, s3_key: str):
 # ---------------- START JOBS ----------------
 @router.post("/jobs/start")
 async def start_jobs(user=Depends(get_current_user)):
-    """Start transcoding all queued jobs for the current user"""
+    """Queue all 'queued' jobs into SQS for the worker to process."""
     try:
         resp = dynamodb.query(
             TableName=JOBS_TABLE,
@@ -117,7 +117,7 @@ async def start_jobs(user=Depends(get_current_user)):
             ExpressionAttributeValues={":u": {"S": user["cognito:username"]}},
         )
         items = resp.get("Items", [])
-        started = []
+        sent = 0
 
         for item in items:
             status = item.get("status", {}).get("S", "")
@@ -125,13 +125,56 @@ async def start_jobs(user=Depends(get_current_user)):
                 jobs_id = item["jobs_id"]["S"]
                 s3_key = item["s3_key"]["S"]
 
-                # Launch transcoding asynchronously
-                asyncio.create_task(run_job(jobs_id, user["cognito:username"], s3_key))
-                started.append(jobs_id)
+                msg = {
+                    "username": user["cognito:username"],
+                    "jobs_id": jobs_id,
+                    "s3_key": s3_key,
+                }
 
-        return {"message": f"Started {len(started)} jobs", "jobs": started}
+                sqs.send_message(QueueUrl=SQS_QUEUE_URL, MessageBody=json.dumps(msg))
+
+                # Optional: update DynamoDB status
+                dynamodb.update_item(
+                    TableName=JOBS_TABLE,
+                    Key={"qut-username": {"S": user["cognito:username"]}, "jobs_id": {"S": jobs_id}},
+                    UpdateExpression="SET #s = :s, queued_at = :t",
+                    ExpressionAttributeNames={"#s": "status"},
+                    ExpressionAttributeValues={
+                        ":s": {"S": "queued"},
+                        ":t": {"S": datetime.utcnow().isoformat()},
+                    },
+                )
+                sent += 1
+
+        return {"message": f"{sent} jobs sent to SQS for processing"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# @router.post("/jobs/start")
+# async def start_jobs(user=Depends(get_current_user)):
+#     """Start transcoding all queued jobs for the current user"""
+#     try:
+#         resp = dynamodb.query(
+#             TableName=JOBS_TABLE,
+#             KeyConditionExpression="#u = :u",
+#             ExpressionAttributeNames={"#u": "qut-username"},
+#             ExpressionAttributeValues={":u": {"S": user["cognito:username"]}},
+#         )
+#         items = resp.get("Items", [])
+#         started = []
+
+#         for item in items:
+#             status = item.get("status", {}).get("S", "")
+#             if status == "queued":
+#                 jobs_id = item["jobs_id"]["S"]
+#                 s3_key = item["s3_key"]["S"]
+
+#                 # Launch transcoding asynchronously
+#                 asyncio.create_task(run_job(jobs_id, user["cognito:username"], s3_key))
+#                 started.append(jobs_id)
+
+#         return {"message": f"Started {len(started)} jobs", "jobs": started}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------- LIST JOBS ----------------

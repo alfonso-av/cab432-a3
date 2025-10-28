@@ -228,10 +228,14 @@ if token:
         res = requests.post(f"{BASE_URL}/jobs/start", headers=headers)
         if res.status_code == 200:
             data = res.json()
-            st.success(f"Started {len(data['jobs'])} job(s)")
-            st.rerun()
+            # Support both old and new backend responses
+            if "jobs" in data:
+                st.success(f"Started {len(data['jobs'])} job(s)")
+            else:
+                st.success(data.get("message", "Jobs started successfully."))
         else:
-            st.error(f"Failed to start jobs: {res.status_code} - {res.text}")
+            st.error(f"Failed to start jobs: {res.text}")
+
 
     # ---------------- METADATA MODAL ----------------
     if st.session_state.get("show_metadata_modal") and st.session_state.get("selected_metadata"):
