@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CAB432 A3 - Infrastructure as Code (IaC)
+  Defines core Block 3 services for the Video Transcoder Application
+  by Alfonso Avenido (n10893997)
+
+Resources:
+  # -----------------------------------------------------
+  # MAIN SQS QUEUE
+  # -----------------------------------------------------
+  VideoQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: n10893997-sqs-a3
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt VideoDLQ.Arn
+        maxReceiveCount: 3
+
+  # -----------------------------------------------------
+  # DEAD LETTER QUEUE (DLQ)
+  # -----------------------------------------------------
+  VideoDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: n10893997-sqs-a3-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # -----------------------------------------------------
+  # LAUNCH CONFIGURATION FOR WORKER INSTANCES
+  # -----------------------------------------------------
+  WorkerLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-00ac0e555ec9eb3d3               # worker AMI
+      InstanceType: t2.micro
+      SecurityGroups:
+        - sg-032bd1ff8cf77dbb9                    # worker security group
+      KeyName: ec2-a3-kp4
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          cd /home/ubuntu
+          source venv/bin/activate
+          python3 worker.py > /var/log/worker.log 2>&1 &
+
+  # -----------------------------------------------------
+  # WORKER AUTO SCALING GROUP
+  # -----------------------------------------------------
+  WorkerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: n10893997-worker-asg-v2
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier:
+        - subnet-075811427d5564cf9
+        - subnet-05a3b8177138c8b14
+        - subnet-04ca053dcbe5f49cc
+      Tags:
+        - Key: Name
+          Value: WorkerAutoScalingInstance
+          PropagateAtLaunch: true

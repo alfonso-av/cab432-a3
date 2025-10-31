@@ -1,4 +1,5 @@
 import os, uuid, asyncio, subprocess, boto3
+import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from auth import get_current_user, is_admin
@@ -12,7 +13,7 @@ S3_BUCKET = "n10893997-videos"
 SQS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/901444280953/n10893997-sqs-a3"
 
 dynamodb = boto3.client("dynamodb", region_name=REGION)
-# s3_client = boto3.client("s3", region_name=REGION)
+s3_client = boto3.client("s3", region_name=REGION)
 sqs = boto3.client("sqs", region_name=REGION)
 
 
